@@ -7,8 +7,13 @@ import { Movie } from '../typings'
 import Row from '../components/Row'
 import useAuth from '../hooks/useAuth'
 import { useRecoilValue } from 'recoil'
-import { modalState } from '../atoms/modalAtom'
+import { modalState, movieState } from '../atoms/modalAtom'
 import Modal from '../components/Modal'
+import Plans from '../components/Plans'
+import { getProducts, Product } from '@stripe/firestore-stripe-payments'
+import payments from '../lib/stripe'
+import useSubscription from '../hooks/useSubscription'
+import useList from '../hooks/useList'
 
 interface Props {
   netflixOriginals: Movie[]
@@ -18,7 +23,8 @@ interface Props {
   comedyMovies: Movie[]
   horrorMovies: Movie[]
   romanceMovies: Movie[]
-  documentaries: Movie[]
+  documentaries: Movie[],
+  products: Product[]
 }
 
 const Home = ({
@@ -30,15 +36,25 @@ const Home = ({
   romanceMovies,
   topRated,
   trendingNow,
+  products
 }: Props) => {
-  const { logout, loading } = useAuth()
-  const showModal = useRecoilValue(modalState);
   
+  const { loading, user } = useAuth()
+  const showModal = useRecoilValue(modalState)
+  const subscription = useSubscription(user);
+  const movie = useRecoilValue(movieState);
+  const list = useList(user?.uid)
 
-  if(loading) return null
+  if (loading || subscription === null) return null
+
+  if (!subscription) return <Plans products={products} />
 
   return (
-    <div className={`relative h-screen bg-gradient-to-b lg:h-[140vh] ${showModal && "!h-screen overflow-hidden"}`}>
+    <div
+      className={`relative h-screen bg-gradient-to-b lg:h-[140vh] ${
+        showModal && '!h-screen overflow-hidden'
+      }`}
+    >
       <Head>
         <title>Home - Netflix</title>
         <link rel="icon" href="/favicon.ico" />
@@ -53,7 +69,7 @@ const Home = ({
           <Row title="Top Rated" movies={topRated} />
           <Row title="Action Thrillers" movies={actionMovies} />
           {/* My List Component*/}
-
+          {list.length > 0 && <Row title="My List" movies={list}/>}
           <Row title="Comedies" movies={comedyMovies} />
           <Row title="Scary Movies" movies={horrorMovies} />
           <Row title="Romance Movies" movies={romanceMovies} />
@@ -61,7 +77,7 @@ const Home = ({
         </section>
       </main>
       {/* Modal */}
-      {showModal && <Modal/>}
+      {showModal && <Modal />}
     </div>
   )
 }
@@ -69,6 +85,12 @@ const Home = ({
 export default Home
 
 export const getServerSideProps = async () => {
+  const products = await getProducts(payments, {
+    includePrices: true,
+    activeOnly: true,
+  })
+    .then((res) => res)
+    .catch((error) => console.log(error))
   const [
     netflixOriginals,
     trendingNow,
@@ -99,6 +121,7 @@ export const getServerSideProps = async () => {
       horrorMovies: horrorMovies.results,
       romanceMovies: romanceMovies.results,
       documentaries: documentaries.results,
+      products,
     },
   }
 }
